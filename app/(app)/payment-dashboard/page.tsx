@@ -274,8 +274,8 @@ export default function PaymentDashboardPage() {
     [...periods].reverse().map((pk) => {
       const pr = rows.filter((r) => r.periodKey === pk);
       const label = pr[0] ? `${pr[0].salaryMonth.slice(0, 3)} ${pr[0].salaryYear}` : String(pk);
-      const point: Record<string, string | number> = { label };
-      ['UAE', 'Pakistan'].forEach((region) => {
+      const point: { label: string; UAE?: number; Pakistan?: number } = { label };
+      (['UAE', 'Pakistan'] as const).forEach((region) => {
         const rr = pr.filter((r) => r.region === region);
         if (rr.length) point[region] = rr.reduce((s, r) => s + r.grossSalary, 0);
       });
@@ -373,7 +373,7 @@ export default function PaymentDashboardPage() {
             Payment Trend
             <span className="chart-period-count">{periods.length} month{periods.length !== 1 ? 's' : ''}</span>
           </div>
-          <TrendLine data={trendData as Parameters<typeof TrendLine>[0]['data']} />
+          <TrendLine data={trendData} />
         </div>
       </div>
 
