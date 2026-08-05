@@ -17,7 +17,7 @@ function findSheet(sheetNames: string[], name: string): string | undefined {
   return sheetNames.find((s) => s.toLowerCase() === name.toLowerCase());
 }
 
-function normalize(s: string): string {
+function normalize(s: string | number): string {
   return String(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
