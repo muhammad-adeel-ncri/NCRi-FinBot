@@ -84,6 +84,15 @@ export async function POST(req: NextRequest) {
     };
   });
 
+  // Only save to Supabase when every sheet is balanced
+  const allBalanced = results.every((r) => r.balanced);
+  if (!allBalanced) {
+    return NextResponse.json({
+      results: results.map(({ sheetData: _, je: __, ...rest }) => rest),
+      sheetErrors: errors,
+    });
+  }
+
   // Save to Supabase (non-blocking on failure — JE files are still returned)
   try {
     const { data: snapshot, error: snapErr } = await supabase

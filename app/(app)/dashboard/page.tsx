@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
 import KPICards, { KPIData } from '@/components/KPICards';
 import DepartmentTable, { TableRow } from '@/components/DepartmentTable';
+import DeptVarianceModal from '@/components/DeptVarianceModal';
 
 // Module-level cache — survives tab switches, cleared on manual refresh
 let _cache: { rows: DeptRow[]; isDemo: boolean } | null = null;
@@ -181,6 +182,7 @@ export default function DashboardPage() {
   const [periodFilters, setPeriodFilters] = useState<string[]>([]);
   const [regionFilters, setRegionFilters] = useState<string[]>([]);
   const [deptFilters,   setDeptFilters]   = useState<string[]>([]);
+  const [detailRow,     setDetailRow]     = useState<TableRow | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -270,19 +272,30 @@ export default function DashboardPage() {
       if (!groups[k]) groups[k] = [];
       groups[k].push(r);
     });
-    const result: Record<string, { v1: number | null; v2: number | null; flagged: boolean }> = {};
+    const result: Record<string, {
+      v1: number | null; v2: number | null; flagged: boolean;
+      prevGross: number | null; prevNet: number | null; prevEobi: number | null;
+      prevTax: number | null; prevEmp: number | null;
+      prevMonth: string | null; currMonth: string | null;
+    }> = {};
     Object.entries(groups).forEach(([k, group]) => {
       const sorted = [...group].sort((a, b) => b.periodKey - a.periodKey);
       const currIdx = sorted.findIndex((r) => r.periodKey === refPeriodKey);
       const curr  = sorted[currIdx];
       const prev1 = sorted[currIdx + 1];
       const prev2 = sorted[currIdx + 2];
-      if (!curr) { result[k] = { v1: null, v2: null, flagged: false }; return; }
+      if (!curr) { result[k] = { v1: null, v2: null, flagged: false, prevGross: null, prevNet: null, prevEobi: null, prevTax: null, prevEmp: null, prevMonth: null, currMonth: null }; return; }
       const v1 = prev1 && prev1.grossSalary !== 0
         ? ((curr.grossSalary - prev1.grossSalary) / prev1.grossSalary) * 100 : null;
       const v2 = prev2 && prev2.grossSalary !== 0
         ? ((curr.grossSalary - prev2.grossSalary) / prev2.grossSalary) * 100 : null;
-      result[k] = { v1, v2, flagged: (v1 !== null && Math.abs(v1) > 3) || (v2 !== null && Math.abs(v2) > 3) };
+      result[k] = {
+        v1, v2, flagged: (v1 !== null && Math.abs(v1) > 3) || (v2 !== null && Math.abs(v2) > 3),
+        prevGross: prev1?.grossSalary ?? null, prevNet: prev1?.netPayable ?? null,
+        prevEobi: prev1?.eobi ?? null, prevTax: prev1?.tax ?? null,
+        prevEmp: prev1?.employeeCount ?? null,
+        prevMonth: prev1?.salaryMonth ?? null, currMonth: curr.salaryMonth,
+      };
     });
     return result;
   }, [rows, periodFilters, periods]);
@@ -293,9 +306,12 @@ export default function DashboardPage() {
     return [...new Set(source.map((r) => r.department))].sort();
   }, [selectedRows, regionFilters]);
 
-  // Table rows
+  // Table rows — always show exactly one period (latest or selected) to avoid duplicates
   const tableRows = useMemo((): TableRow[] => {
-    let source = selectedRows;
+    const refPK = periodFilters.length === 1
+      ? (rows.find((r) => r.salaryMonth === periodFilters[0])?.periodKey ?? periods[0])
+      : periods[0];
+    let source = rows.filter((r) => r.periodKey === refPK);
     if (regionFilters.length > 0) source = source.filter((r) => regionFilters.includes(r.region));
     if (deptFilters.length   > 0) source = source.filter((r) => deptFilters.includes(r.department));
     return source.map((r) => {
@@ -304,13 +320,22 @@ export default function DashboardPage() {
         region: r.region, department: r.department, grossSalary: r.grossSalary,
         netPayable: r.netPayable, eobi: r.eobi, tax: r.tax, employeeCount: r.employeeCount,
         variance1: v?.v1 ?? null, variance2: v?.v2 ?? null, flagged: v?.flagged ?? false,
+        prevGross: v?.prevGross ?? null, prevNet: v?.prevNet ?? null,
+        prevEobi: v?.prevEobi ?? null, prevTax: v?.prevTax ?? null,
+        prevEmp: v?.prevEmp ?? null,
+        prevMonth: v?.prevMonth ?? null, currMonth: v?.currMonth ?? null,
       };
     }).sort((a, b) => a.region !== b.region ? a.region.localeCompare(b.region) : a.department.localeCompare(b.department));
-  }, [selectedRows, regionFilters, deptFilters, varianceMap]);
+  }, [rows, periodFilters, periods, regionFilters, deptFilters, varianceMap]);
 
-  // KPI totals — respect all active slicers
+  // KPI totals — aggregate across all selected periods (overall when no period filter)
   const kpiData = useMemo((): KPIData => {
-    const src = tableRows;
+    // src = all selected-period rows, respecting region/dept filters
+    const src = selectedRows
+      .filter((r) => regionFilters.length === 0 || regionFilters.includes(r.region))
+      .filter((r) => deptFilters.length   === 0 || deptFilters.includes(r.department));
+
+    // MoM only meaningful when exactly 1 period is selected
     const refPK = periodFilters.length === 1
       ? (rows.find((r) => r.salaryMonth === periodFilters[0])?.periodKey ?? null)
       : null;
@@ -323,18 +348,17 @@ export default function DashboardPage() {
           .filter((r) => deptFilters.length   === 0 || deptFilters.includes(r.department))
       : [];
 
-    const sum = (arr: typeof src, k: 'grossSalary' | 'netPayable' | 'tax' | 'eobi') =>
-      arr.reduce((s, r) => s + r[k], 0);
-    const psum = (arr: typeof prevSrc, k: 'grossSalary' | 'netPayable' | 'tax' | 'eobi') =>
+    const sum  = (arr: DeptRow[], k: 'grossSalary' | 'netPayable' | 'tax' | 'eobi') =>
       arr.reduce((s, r) => s + r[k], 0);
     const moM = (c: number, p: number) => p !== 0 ? ((c - p) / p) * 100 : null;
 
-    const gross = sum(src, 'grossSalary');  const pGross = psum(prevSrc, 'grossSalary');
-    const net   = sum(src, 'netPayable');   const pNet   = psum(prevSrc, 'netPayable');
-    const tax   = sum(src, 'tax');          const pTax   = psum(prevSrc, 'tax');
-    const eobi  = sum(src, 'eobi');         const pEobi  = psum(prevSrc, 'eobi');
-    const emp   = src.reduce((s, r) => s + r.employeeCount, 0);
-    const pEmp  = prevSrc.reduce((s, r) => s + r.employeeCount, 0);
+    const gross = sum(src, 'grossSalary');       const pGross = sum(prevSrc, 'grossSalary');
+    const net   = sum(src, 'netPayable');        const pNet   = sum(prevSrc, 'netPayable');
+    const tax   = sum(src, 'tax');               const pTax   = sum(prevSrc, 'tax');
+    const eobi  = sum(src, 'eobi');              const pEobi  = sum(prevSrc, 'eobi');
+    // Employee count: use reference-period rows to avoid inflating across months
+    const emp  = tableRows.reduce((s, r) => s + r.employeeCount, 0);
+    const pEmp = prevSrc.reduce((s, r) => s + r.employeeCount, 0);
 
     return {
       grossSalary: gross, netPayable: net, employees: emp, tax, eobi,
@@ -344,17 +368,21 @@ export default function DashboardPage() {
       taxMoM:       prevSrc.length ? moM(tax,   pTax)   : null,
       eobiMoM:      prevSrc.length ? moM(eobi,  pEobi)  : null,
     };
-  }, [tableRows, rows, periodFilters, periods, regionFilters, deptFilters]);
+  }, [selectedRows, tableRows, rows, periodFilters, periods, regionFilters, deptFilters]);
 
-  // Dept salary bar — all visible departments (respects slicers)
-  const deptSalaryData = useMemo(() =>
-    tableRows.map((r) => ({
-      name: regionFilters.length !== 1 ? `${r.region} · ${r.department}` : r.department,
-      value: r.grossSalary,
-      region: r.region,
-    })),
-    [tableRows, regionFilters]
-  );
+  // Dept salary bar — aggregate across all selected periods (overall when no filter)
+  const deptSalaryData = useMemo(() => {
+    let source = selectedRows;
+    if (regionFilters.length > 0) source = source.filter((r) => regionFilters.includes(r.region));
+    if (deptFilters.length   > 0) source = source.filter((r) => deptFilters.includes(r.department));
+    const map: Record<string, { value: number; region: string }> = {};
+    source.forEach((r) => {
+      const name = regionFilters.length !== 1 ? `${r.region} · ${r.department}` : r.department;
+      if (!map[name]) map[name] = { value: 0, region: r.region };
+      map[name].value += r.grossSalary;
+    });
+    return Object.entries(map).map(([name, d]) => ({ name, value: d.value, region: d.region }));
+  }, [selectedRows, regionFilters, deptFilters]);
 
   const periodLabel = selectedRows[0]
     ? `${selectedRows[0].salaryMonth} ${selectedRows[0].salaryYear}`
@@ -394,6 +422,7 @@ export default function DashboardPage() {
   );
 
   return (
+    <>
     <div className="page-content">
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
@@ -472,8 +501,10 @@ export default function DashboardPage() {
             <span className="badge-warning">⚠ {flaggedCount} department{flaggedCount !== 1 ? 's' : ''} exceeded 3% variance</span>
           )}
         </div>
-        <DepartmentTable rows={tableRows} showRegion={regionFilters.length !== 1} />
+        <DepartmentTable rows={tableRows} showRegion={regionFilters.length !== 1} onDetail={setDetailRow} />
       </div>
     </div>
+    {detailRow && <DeptVarianceModal row={detailRow} onClose={() => setDetailRow(null)} />}
+    </>
   );
 }

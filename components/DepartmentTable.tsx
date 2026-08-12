@@ -11,11 +11,19 @@ export interface TableRow {
   variance1: number | null;
   variance2: number | null;
   flagged: boolean;
+  prevGross: number | null;
+  prevNet: number | null;
+  prevEobi: number | null;
+  prevTax: number | null;
+  prevEmp: number | null;
+  prevMonth: string | null;
+  currMonth: string | null;
 }
 
 interface Props {
   rows: TableRow[];
   showRegion: boolean;
+  onDetail: (row: TableRow) => void;
 }
 
 function fmt(n: number) {
@@ -29,7 +37,7 @@ function fmtVariance(v: number | null) {
   return <span className={isHigh ? 'var-flag' : 'var-ok'}>{label}</span>;
 }
 
-export default function DepartmentTable({ rows, showRegion }: Props) {
+export default function DepartmentTable({ rows, showRegion, onDetail }: Props) {
   if (!rows.length) {
     return (
       <div className="table-empty">
@@ -52,6 +60,7 @@ export default function DepartmentTable({ rows, showRegion }: Props) {
             <th className="num">Employees</th>
             <th className="num">vs Last Month</th>
             <th className="num">vs 2mo Ago</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -72,6 +81,15 @@ export default function DepartmentTable({ rows, showRegion }: Props) {
               <td className="num">{row.employeeCount || '—'}</td>
               <td className="num">{fmtVariance(row.variance1)}</td>
               <td className="num">{fmtVariance(row.variance2)}</td>
+              <td>
+                <button
+                  className="btn-detail"
+                  onClick={() => onDetail(row)}
+                  title="View variance detail"
+                >
+                  Detail
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

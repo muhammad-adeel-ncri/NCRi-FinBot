@@ -21,6 +21,22 @@ function normalize(s: string | number): string {
   return String(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function findHeaderRowIndex(rows: (string | number)[][]): number {
+  const keywords = ['gross', 'net', 'eobi', 'tax', 'count', 'label', 'department', 'employee'];
+  let bestIdx = -1;
+  let bestScore = 0;
+  rows.forEach((row, i) => {
+    const score = row.reduce((s: number, c) => {
+      const n = normalize(c);
+      return s + keywords.filter((k) => n.includes(k)).length;
+    }, 0);
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  });
+  // fall back to first non-empty row if no keywords matched
+  if (bestIdx === -1) return rows.findIndex((r) => r.some((c) => String(c).trim() !== ''));
+  return bestIdx;
+}
+
 function findColIndex(headers: (string | number)[], keyword: string, excludeKeyword?: string): number {
   return headers.findIndex((h) => {
     const n = normalize(h);
@@ -72,7 +88,10 @@ function parseStandardSheet(
 
   if (rows.length === 0) return { error: { sheet: country, messages: ['Sheet is empty.'] } };
 
-  const headers = rows[0];
+  const headerRowIdx = findHeaderRowIndex(rows);
+  if (headerRowIdx === -1) return { error: { sheet: country, messages: ['Sheet appears to be blank.'] } };
+
+  const headers = rows[headerRowIdx];
   const missing: string[] = [];
 
   const grossCol    = findColIndex(headers, 'gross', 'up');
@@ -94,7 +113,7 @@ function parseStandardSheet(
   const rowErrors: string[] = [];
   let hasGrandTotal = false;
 
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i];
     const label = String(row[0]).trim();
     if (!label) continue;
@@ -128,7 +147,10 @@ function parseUAESheet(wb: XLSX.WorkBook, sheetName: string, salaryMonth: string
 
   if (rows.length === 0) return { error: { sheet: 'UAE', messages: ['Sheet is empty.'] } };
 
-  const headers = rows[0];
+  const headerRowIdx = findHeaderRowIndex(rows);
+  if (headerRowIdx === -1) return { error: { sheet: 'UAE', messages: ['Sheet appears to be blank.'] } };
+
+  const headers = rows[headerRowIdx];
   const grossCol    = findColIndex(headers, 'gross');
   const employeeCol = findColIndex(headers, 'count');
 
@@ -140,7 +162,7 @@ function parseUAESheet(wb: XLSX.WorkBook, sheetName: string, salaryMonth: string
   const rowErrors: string[] = [];
   let hasGrandTotal = false;
 
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i];
     const label = String(row[0]).trim();
     if (!label) continue;
