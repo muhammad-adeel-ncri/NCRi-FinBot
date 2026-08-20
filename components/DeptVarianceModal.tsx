@@ -13,6 +13,11 @@ function fmt(n: number | null): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+function avg2(a: number | null, b: number | null): number | null {
+  if (a === null || b === null) return null;
+  return (a + b) / 2;
+}
+
 function DiffCell({ curr, prev, isCount = false }: { curr: number | null; prev: number | null; isCount?: boolean }) {
   if (curr === null || prev === null) return <span className="var-na">—</span>;
   const delta = curr - prev;
@@ -25,16 +30,17 @@ function DiffCell({ curr, prev, isCount = false }: { curr: number | null; prev: 
   return <span className={isHigh ? 'var-flag' : delta === 0 ? 'var-na' : 'var-ok'}>{label}</span>;
 }
 
+function AvgDiffCell({ curr, a, b, isCount = false }: { curr: number | null; a: number | null; b: number | null; isCount?: boolean }) {
+  const avgVal = avg2(a, b);
+  return <DiffCell curr={curr} prev={avgVal} isCount={isCount} />;
+}
+
 export default function DeptVarianceModal({ row, onClose }: Props) {
   useEffect(() => {
     function handler(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
-
-  const prevGrossPerEmp = row.prevEmp && row.prevEmp > 0 && row.prevGross !== null
-    ? row.prevGross / row.prevEmp : null;
-  const currGrossPerEmp = row.employeeCount > 0 ? row.grossSalary / row.employeeCount : null;
 
   const empDelta = row.prevEmp !== null ? row.employeeCount - row.prevEmp : null;
   let diagnosis = '';
@@ -48,8 +54,9 @@ export default function DeptVarianceModal({ row, onClose }: Props) {
     }
   }
 
-  const showEobi = row.eobi > 0 || (row.prevEobi !== null && row.prevEobi > 0);
-  const showTax  = row.tax  > 0 || (row.prevTax  !== null && row.prevTax  > 0);
+  const showEobi = row.eobi > 0 || (row.prevEobi !== null && row.prevEobi > 0) || (row.prev2Eobi !== null && row.prev2Eobi > 0);
+  const showTax  = row.tax  > 0 || (row.prevTax  !== null && row.prevTax  > 0) || (row.prev2Tax  !== null && row.prev2Tax  > 0);
+  const show2mo  = row.prev2Month !== null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -63,7 +70,9 @@ export default function DeptVarianceModal({ row, onClose }: Props) {
         </div>
 
         {row.prevMonth && row.currMonth && (
-          <div className="modal-period">{row.prevMonth} → {row.currMonth}</div>
+          <div className="modal-period">
+            {show2mo ? `${row.prev2Month} → ${row.prevMonth} → ${row.currMonth}` : `${row.prevMonth} → ${row.currMonth}`}
+          </div>
         )}
 
         <div className="modal-body">
@@ -71,53 +80,59 @@ export default function DeptVarianceModal({ row, onClose }: Props) {
             <thead>
               <tr>
                 <th>Metric</th>
-                <th className="num">{row.prevMonth ?? 'Prev Month'}</th>
+                {show2mo && <th className="num">{row.prev2Month ?? '2mo Ago'}</th>}
+                <th className="num">{row.prevMonth ?? 'Last Month'}</th>
                 <th className="num">{row.currMonth ?? 'This Month'}</th>
-                <th className="num">Change</th>
+                <th className="num">vs Last Month</th>
+                {show2mo && <th className="num">vs 2mo Avg</th>}
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>Gross Salary</td>
+                {show2mo && <td className="num">{fmt(row.prev2Gross)}</td>}
                 <td className="num">{fmt(row.prevGross)}</td>
                 <td className="num">{fmt(row.grossSalary)}</td>
                 <td className="num"><DiffCell curr={row.grossSalary} prev={row.prevGross} /></td>
+                {show2mo && <td className="num"><AvgDiffCell curr={row.grossSalary} a={row.prevGross} b={row.prev2Gross} /></td>}
               </tr>
               {row.netPayable > 0 && (
                 <tr>
                   <td>Net Payable</td>
+                  {show2mo && <td className="num">{fmt(row.prev2Net)}</td>}
                   <td className="num">{fmt(row.prevNet)}</td>
                   <td className="num">{fmt(row.netPayable)}</td>
                   <td className="num"><DiffCell curr={row.netPayable} prev={row.prevNet} /></td>
+                  {show2mo && <td className="num"><AvgDiffCell curr={row.netPayable} a={row.prevNet} b={row.prev2Net} /></td>}
                 </tr>
               )}
               {showEobi && (
                 <tr>
                   <td>EOBI</td>
+                  {show2mo && <td className="num">{fmt(row.prev2Eobi)}</td>}
                   <td className="num">{fmt(row.prevEobi)}</td>
                   <td className="num">{fmt(row.eobi)}</td>
                   <td className="num"><DiffCell curr={row.eobi} prev={row.prevEobi} /></td>
+                  {show2mo && <td className="num"><AvgDiffCell curr={row.eobi} a={row.prevEobi} b={row.prev2Eobi} /></td>}
                 </tr>
               )}
               {showTax && (
                 <tr>
                   <td>Tax</td>
+                  {show2mo && <td className="num">{fmt(row.prev2Tax)}</td>}
                   <td className="num">{fmt(row.prevTax)}</td>
                   <td className="num">{fmt(row.tax)}</td>
                   <td className="num"><DiffCell curr={row.tax} prev={row.prevTax} /></td>
+                  {show2mo && <td className="num"><AvgDiffCell curr={row.tax} a={row.prevTax} b={row.prev2Tax} /></td>}
                 </tr>
               )}
               <tr>
                 <td>Employees</td>
+                {show2mo && <td className="num">{row.prev2Emp ?? '—'}</td>}
                 <td className="num">{row.prevEmp ?? '—'}</td>
                 <td className="num">{row.employeeCount || '—'}</td>
                 <td className="num"><DiffCell curr={row.employeeCount} prev={row.prevEmp} isCount /></td>
-              </tr>
-              <tr className="modal-row-highlight">
-                <td>Gross / Employee</td>
-                <td className="num">{fmt(prevGrossPerEmp)}</td>
-                <td className="num">{fmt(currGrossPerEmp)}</td>
-                <td className="num"><DiffCell curr={currGrossPerEmp} prev={prevGrossPerEmp} /></td>
+                {show2mo && <td className="num"><AvgDiffCell curr={row.employeeCount} a={row.prevEmp} b={row.prev2Emp} isCount /></td>}
               </tr>
             </tbody>
           </table>

@@ -247,10 +247,19 @@ export default function PaymentDashboardPage() {
   }, [filteredRows, prevRows, showUAE, showPK]);
 
   // Chart data
-  const deptChartData = useMemo(() =>
-    filteredRows.map((r) => ({ name: r.department, value: r.grossSalary, region: r.region })),
-    [filteredRows]
-  );
+  const deptChartData = useMemo(() => {
+    const map: Record<string, { value: number; region: string }> = {};
+    filteredRows.forEach((r) => {
+      const key = `${r.region}__${r.department}`;
+      if (!map[key]) map[key] = { value: 0, region: r.region };
+      map[key].value += r.grossSalary;
+    });
+    return Object.entries(map).map(([key, d]) => ({
+      name: key.split('__')[1],
+      value: d.value,
+      region: d.region,
+    }));
+  }, [filteredRows]);
 
   const regionSplitData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -284,17 +293,46 @@ export default function PaymentDashboardPage() {
     [rows, periods]
   );
 
-  const tableRows = useMemo((): PaymentTableRow[] =>
-    [...filteredRows]
-      .sort((a, b) => a.region.localeCompare(b.region) || a.department.localeCompare(b.department))
-      .map((r) => ({
-        region: r.region, department: r.department,
-        grossSalary: r.grossSalary, totalDeduction: r.totalDeduction,
-        grossUp1pct: r.grossUp1pct, eobi: r.eobi, tax: r.tax,
-        netPayable: r.netPayable, employeeCount: r.employeeCount,
-      })),
-    [filteredRows]
-  );
+  const tableRows = useMemo((): PaymentTableRow[] => {
+    if (periodFilters.length === 1) {
+      return [...filteredRows]
+        .sort((a, b) => a.region.localeCompare(b.region) || a.department.localeCompare(b.department))
+        .map((r) => ({
+          region: r.region, department: r.department,
+          grossSalary: r.grossSalary, totalDeduction: r.totalDeduction,
+          grossUp1pct: r.grossUp1pct, eobi: r.eobi, tax: r.tax,
+          netPayable: r.netPayable, employeeCount: r.employeeCount,
+        }));
+    }
+    const map: Record<string, { row: PaymentTableRow; latestPK: number }> = {};
+    filteredRows.forEach((r) => {
+      const key = `${r.region}__${r.department}`;
+      if (!map[key]) {
+        map[key] = {
+          row: {
+            region: r.region, department: r.department,
+            grossSalary: 0, totalDeduction: null, grossUp1pct: null,
+            eobi: null, tax: null, netPayable: null, employeeCount: 0,
+          },
+          latestPK: 0,
+        };
+      }
+      const entry = map[key];
+      entry.row.grossSalary += r.grossSalary;
+      if (r.totalDeduction !== null) entry.row.totalDeduction = (entry.row.totalDeduction ?? 0) + r.totalDeduction;
+      if (r.grossUp1pct   !== null) entry.row.grossUp1pct   = (entry.row.grossUp1pct   ?? 0) + r.grossUp1pct;
+      if (r.eobi          !== null) entry.row.eobi          = (entry.row.eobi          ?? 0) + r.eobi;
+      if (r.tax           !== null) entry.row.tax           = (entry.row.tax           ?? 0) + r.tax;
+      if (r.netPayable    !== null) entry.row.netPayable    = (entry.row.netPayable    ?? 0) + r.netPayable;
+      if (r.periodKey > entry.latestPK) {
+        entry.latestPK = r.periodKey;
+        entry.row.employeeCount = r.employeeCount;
+      }
+    });
+    return Object.values(map)
+      .map((e) => e.row)
+      .sort((a, b) => a.region.localeCompare(b.region) || a.department.localeCompare(b.department));
+  }, [filteredRows, periodFilters]);
 
   if (loading) return (
     <div className="page-content">
@@ -386,7 +424,15 @@ export default function PaymentDashboardPage() {
       {/* Table */}
       <div className="table-card">
         <div className="table-header">
-          <span className="chart-title" style={{ marginBottom: 0 }}>Department Wise Variance</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="chart-title" style={{ marginBottom: 0 }}>Department Wise Breakdown</span>
+            <span className="table-info-icon">
+              ℹ
+              <span className="table-info-tooltip">
+                By default, shows all departments with values <strong>summed across all months</strong>. Select a specific month from the <strong>Period filter</strong> above to view a single month only. Region and Department filters also apply.
+              </span>
+            </span>
+          </div>
         </div>
         <PaymentTable rows={tableRows} regionFilter={regionFilters} />
       </div>

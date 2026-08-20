@@ -31,6 +31,21 @@ function normalize(s: unknown): string {
   return String(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function findHeaderRowIndex(rows: unknown[][]): number {
+  const keywords = ['gross', 'net', 'eobi', 'tax', 'count', 'deduction', 'department', 'employee'];
+  let bestIdx = -1;
+  let bestScore = 0;
+  rows.forEach((row, i) => {
+    const score = row.reduce((s: number, c) => {
+      const n = normalize(c);
+      return s + keywords.filter((k) => n.includes(k)).length;
+    }, 0);
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  });
+  if (bestIdx === -1) return rows.findIndex((r) => r.some((c) => String(c).trim() !== ''));
+  return bestIdx;
+}
+
 function findCol(headers: unknown[], keyword: string, exclude?: string): number {
   return headers.findIndex((h) => {
     const n = normalize(h);

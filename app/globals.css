@@ -651,7 +651,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  width: 100%; max-width: 520px;
+  width: 100%; max-width: 720px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.18);
   overflow: hidden;
 }
@@ -673,7 +673,7 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--surface-2, #F9FAFB);
 }
-.modal-body { padding: 0 0 16px; }
+.modal-body { padding: 0 0 16px; overflow-x: auto; }
 .modal-table {
   width: 100%; border-collapse: collapse; font-size: 0.82rem;
 }
@@ -701,6 +701,41 @@ body {
   display: flex; gap: 8px; align-items: flex-start;
 }
 .modal-diagnosis-icon { flex-shrink: 0; }
+
+.table-info-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-2);
+  font-size: 0.65rem;
+  font-style: normal;
+  cursor: default;
+  flex-shrink: 0;
+}
+.table-info-icon:hover { background: var(--accent); color: #fff; }
+.table-info-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  color: var(--text);
+  line-height: 1.6;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 200;
+  pointer-events: none;
+  white-space: normal;
+}
+.table-info-icon:hover .table-info-tooltip { display: block; }
 
 .table-empty {
   padding: 48px 24px;

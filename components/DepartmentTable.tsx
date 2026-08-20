@@ -17,6 +17,12 @@ export interface TableRow {
   prevTax: number | null;
   prevEmp: number | null;
   prevMonth: string | null;
+  prev2Gross: number | null;
+  prev2Net: number | null;
+  prev2Eobi: number | null;
+  prev2Tax: number | null;
+  prev2Emp: number | null;
+  prev2Month: string | null;
   currMonth: string | null;
 }
 
@@ -82,13 +88,15 @@ export default function DepartmentTable({ rows, showRegion, onDetail }: Props) {
               <td className="num">{fmtVariance(row.variance1)}</td>
               <td className="num">{fmtVariance(row.variance2)}</td>
               <td>
-                <button
-                  className="btn-detail"
-                  onClick={() => onDetail(row)}
-                  title="View variance detail"
-                >
-                  Detail
-                </button>
+                {row.prevMonth !== null && (
+                  <button
+                    className="btn-detail"
+                    onClick={() => onDetail(row)}
+                    title="View variance detail"
+                  >
+                    Detail
+                  </button>
+                )}
               </td>
             </tr>
           ))}

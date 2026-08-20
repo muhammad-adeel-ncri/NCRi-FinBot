@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import KPICards, { KPIData } from '@/components/KPICards';
 import DepartmentTable, { TableRow } from '@/components/DepartmentTable';
 import DeptVarianceModal from '@/components/DeptVarianceModal';
+import PayrollForecast from '@/components/PayrollForecast';
 
 // Module-level cache — survives tab switches, cleared on manual refresh
 let _cache: { rows: DeptRow[]; isDemo: boolean } | null = null;
@@ -276,7 +277,11 @@ export default function DashboardPage() {
       v1: number | null; v2: number | null; flagged: boolean;
       prevGross: number | null; prevNet: number | null; prevEobi: number | null;
       prevTax: number | null; prevEmp: number | null;
-      prevMonth: string | null; currMonth: string | null;
+      prevMonth: string | null;
+      prev2Gross: number | null; prev2Net: number | null; prev2Eobi: number | null;
+      prev2Tax: number | null; prev2Emp: number | null;
+      prev2Month: string | null;
+      currMonth: string | null;
     }> = {};
     Object.entries(groups).forEach(([k, group]) => {
       const sorted = [...group].sort((a, b) => b.periodKey - a.periodKey);
@@ -287,14 +292,20 @@ export default function DashboardPage() {
       if (!curr) { result[k] = { v1: null, v2: null, flagged: false, prevGross: null, prevNet: null, prevEobi: null, prevTax: null, prevEmp: null, prevMonth: null, currMonth: null }; return; }
       const v1 = prev1 && prev1.grossSalary !== 0
         ? ((curr.grossSalary - prev1.grossSalary) / prev1.grossSalary) * 100 : null;
-      const v2 = prev2 && prev2.grossSalary !== 0
-        ? ((curr.grossSalary - prev2.grossSalary) / prev2.grossSalary) * 100 : null;
+      const avgPrev2 = prev1 && prev2 ? (prev1.grossSalary + prev2.grossSalary) / 2 : null;
+      const v2 = avgPrev2 !== null && avgPrev2 !== 0
+        ? ((curr.grossSalary - avgPrev2) / avgPrev2) * 100 : null;
       result[k] = {
         v1, v2, flagged: (v1 !== null && Math.abs(v1) > 3) || (v2 !== null && Math.abs(v2) > 3),
         prevGross: prev1?.grossSalary ?? null, prevNet: prev1?.netPayable ?? null,
         prevEobi: prev1?.eobi ?? null, prevTax: prev1?.tax ?? null,
         prevEmp: prev1?.employeeCount ?? null,
-        prevMonth: prev1?.salaryMonth ?? null, currMonth: curr.salaryMonth,
+        prevMonth: prev1?.salaryMonth ?? null,
+        prev2Gross: prev2?.grossSalary ?? null, prev2Net: prev2?.netPayable ?? null,
+        prev2Eobi: prev2?.eobi ?? null, prev2Tax: prev2?.tax ?? null,
+        prev2Emp: prev2?.employeeCount ?? null,
+        prev2Month: prev2?.salaryMonth ?? null,
+        currMonth: curr.salaryMonth,
       };
     });
     return result;
@@ -306,14 +317,10 @@ export default function DashboardPage() {
     return [...new Set(source.map((r) => r.department))].sort();
   }, [selectedRows, regionFilters]);
 
-  // Table rows — always show exactly one period (latest or selected) to avoid duplicates
+  // Table rows — always show ALL departments for the latest period, no filters applied
   const tableRows = useMemo((): TableRow[] => {
-    const refPK = periodFilters.length === 1
-      ? (rows.find((r) => r.salaryMonth === periodFilters[0])?.periodKey ?? periods[0])
-      : periods[0];
+    const refPK = periods[0];
     let source = rows.filter((r) => r.periodKey === refPK);
-    if (regionFilters.length > 0) source = source.filter((r) => regionFilters.includes(r.region));
-    if (deptFilters.length   > 0) source = source.filter((r) => deptFilters.includes(r.department));
     return source.map((r) => {
       const v = varianceMap[`${r.region}__${r.department}`];
       return {
@@ -323,7 +330,12 @@ export default function DashboardPage() {
         prevGross: v?.prevGross ?? null, prevNet: v?.prevNet ?? null,
         prevEobi: v?.prevEobi ?? null, prevTax: v?.prevTax ?? null,
         prevEmp: v?.prevEmp ?? null,
-        prevMonth: v?.prevMonth ?? null, currMonth: v?.currMonth ?? null,
+        prevMonth: v?.prevMonth ?? null,
+        prev2Gross: v?.prev2Gross ?? null, prev2Net: v?.prev2Net ?? null,
+        prev2Eobi: v?.prev2Eobi ?? null, prev2Tax: v?.prev2Tax ?? null,
+        prev2Emp: v?.prev2Emp ?? null,
+        prev2Month: v?.prev2Month ?? null,
+        currMonth: v?.currMonth ?? null,
       };
     }).sort((a, b) => a.region !== b.region ? a.region.localeCompare(b.region) : a.department.localeCompare(b.department));
   }, [rows, periodFilters, periods, regionFilters, deptFilters, varianceMap]);
@@ -428,9 +440,12 @@ export default function DashboardPage() {
         <div>
           <h2 className="page-title">Expense Overview</h2>
         </div>
-        <button className="btn-refresh" onClick={fetchData} title="Refresh data">
-          ↻ Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <PayrollForecast rows={rows.map((r) => ({ region: r.region, netPayable: r.netPayable, periodKey: r.periodKey }))} />
+          <button className="btn-refresh" onClick={fetchData} title="Refresh data">
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       {isDemo && (
@@ -496,7 +511,18 @@ export default function DashboardPage() {
       {/* ── Table ── */}
       <div className="table-card">
         <div className="table-header">
-          <span className="chart-title" style={{ marginBottom: 0 }}>Department Wise Variance</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="chart-title" style={{ marginBottom: 0 }}>Department Wise Variance</span>
+            <span className="table-info-icon">
+              ℹ
+              <span className="table-info-tooltip">
+                Always shows <strong>all departments</strong> for the <strong>latest month</strong> — unaffected by any filters above.<br /><br />
+                <strong>vs Last Month:</strong> current vs previous month gross salary.<br />
+                <strong>vs 2mo Avg:</strong> current vs average of last 2 months.<br /><br />
+                Rows highlighted in red exceeded <strong>±3% variance</strong>. Click <strong>Detail</strong> to see a full month-by-month breakdown per department.
+              </span>
+            </span>
+          </div>
           {flaggedCount > 0 && (
             <span className="badge-warning">⚠ {flaggedCount} department{flaggedCount !== 1 ? 's' : ''} exceeded 3% variance</span>
           )}
