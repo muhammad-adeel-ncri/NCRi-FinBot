@@ -289,7 +289,7 @@ export default function DashboardPage() {
       const curr  = sorted[currIdx];
       const prev1 = sorted[currIdx + 1];
       const prev2 = sorted[currIdx + 2];
-      if (!curr) { result[k] = { v1: null, v2: null, flagged: false, prevGross: null, prevNet: null, prevEobi: null, prevTax: null, prevEmp: null, prevMonth: null, currMonth: null }; return; }
+      if (!curr) { result[k] = { v1: null, v2: null, flagged: false, prevGross: null, prevNet: null, prevEobi: null, prevTax: null, prevEmp: null, prevMonth: null, prev2Gross: null, prev2Net: null, prev2Eobi: null, prev2Tax: null, prev2Emp: null, prev2Month: null, currMonth: null }; return; }
       const v1 = prev1 && prev1.grossSalary !== 0
         ? ((curr.grossSalary - prev1.grossSalary) / prev1.grossSalary) * 100 : null;
       const avgPrev2 = prev1 && prev2 ? (prev1.grossSalary + prev2.grossSalary) / 2 : null;
